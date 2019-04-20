@@ -3,6 +3,7 @@
 
 #include "communication.hpp"
 #include "data.hpp"
+#include "logging.hpp"
 #include <boost/mpi/collectives.hpp>
 #include <cstddef>
 #include <functional>
@@ -41,13 +42,21 @@ void random_bodies(const boost::mpi::communicator &comm,
     local_bodies.masses.values[i] = generator.mass();
   }
 
+  logging::logger(logging::Level::Debug)
+      << "random_bodies() main task done, about to gather" << std::endl;
+
   // send and receive all data
   for (std::size_t d = 0; d < Dimension; ++d) {
+    logging::logger(logging::Level::Debug)
+        << "gathering positions of dimension " << d << std::endl;
     boost::mpi::all_gather(comm, local_bodies.positions.values[d].get(),
                            division.count, bodies.positions.values[d].get());
+    logging::logger(logging::Level::Debug)
+        << "gathering velocities of dimension " << d << std::endl;
     boost::mpi::all_gather(comm, local_bodies.velocities.values[d].get(),
                            division.count, bodies.velocities.values[d].get());
   }
+  logging::logger(logging::Level::Debug) << "gathering masses" << std::endl;
   boost::mpi::all_gather(comm, local_bodies.masses.values.get(), division.count,
                          bodies.masses.values.get());
 }

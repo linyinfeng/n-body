@@ -64,11 +64,11 @@ template <typename T, std::size_t Dimension> struct Bodies {
   }
 };
 
-template <typename T, std::size_t Dimension> struct Space {
-  using vector_type = Vector<T, Dimension>;
+template <typename T> struct Space {
+  using scalar_type = Scalar<T>;
 
-  vector_type min;
-  vector_type max;
+  scalar_type min;
+  scalar_type max;
 };
 
 } // namespace n_body::data

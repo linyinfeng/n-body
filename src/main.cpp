@@ -1,23 +1,24 @@
+#include "config.hpp"
+#include "data.hpp"
+#include "logging.hpp"
+#include "random.hpp"
+#include "random_body.hpp"
+#include "space.hpp"
+#include "tree.hpp"
 #include <array>
-#include <boost/mpi/collectives.hpp>
-#include <boost/mpi/communicator.hpp>
-#include <boost/mpi/environment.hpp>
+#include <boost/mpi.hpp>
 #include <boost/program_options.hpp>
 #include <iostream>
 #include <random>
 
-#include "config.hpp"
-#include "data.hpp"
-#include "random.hpp"
-#include "random_body.hpp"
-#include "tree.hpp"
-
 namespace mpi = boost::mpi;
 namespace po = boost::program_options;
+namespace logging = n_body::logging;
 
 using Number = float;
 
-using n_body::config::Configuration;
+using n_body::logging::Level;
+using n_body::logging::logger;
 using std::array;
 using std::cout;
 using std::endl;
@@ -25,16 +26,22 @@ using std::size_t;
 using std::string;
 
 constexpr size_t DIMENSION = 3;
+constexpr int ROOT = 0;
+
+namespace n_body {
 
 int main(int argc, char *argv[]) {
-  mpi::environment env(argc, argv);
+  mpi::environment env(argc, argv, false);
   mpi::communicator world;
-  const int root = 0;
+  mpi::timer timer;
 
-  bool is_continue = true;
-  Configuration<Number> config;
-  if (world.rank() == root) {
-    po::options_description description("options");
+  // setup logger
+  logging::Configuration::instance().default_communicator = &world;
+  logging::Configuration::instance().timer = &timer;
+
+  config::Configuration<Number> config;
+  po::options_description description("options");
+  if (world.rank() == ROOT) {
     description.add_options()("help,h", "print help message");
     description.add_options()("number,n",
                               po::value<unsigned>()->default_value(100),
@@ -57,34 +64,43 @@ int main(int argc, char *argv[]) {
     po::store(po::parse_command_line(argc, argv, description), vm);
     po::notify(vm);
 
-    if (vm.count("help")) {
-      cout << description << endl;
-      is_continue = false;
-    } else {
-      config.number = vm["number"].as<unsigned>();
-      config.steps = vm["steps"].as<unsigned>();
-      config.time = vm["time"].as<Number>();
-      config.G = vm["gravitational-constant"].as<Number>();
-      config.theta = vm["theta"].as<Number>();
-      config.output_file = vm["output"].as<string>();
+    if (vm.count("help"))
+      config.show_help = true;
+    config.number = vm["number"].as<unsigned>();
+    config.steps = vm["steps"].as<unsigned>();
+    config.time = vm["time"].as<Number>();
+    config.G = vm["gravitational-constant"].as<Number>();
+    config.theta = vm["theta"].as<Number>();
+    config.output_file = vm["output"].as<string>();
 
-      cout << "set number of body to " << config.number << endl;
-      cout << "set simulate steps to " << config.steps << endl;
-      cout << "set time of every single step to " << config.time << endl;
-      cout << "set gravitational constant to " << config.G << endl;
-      cout << "set Barnes-Hut approximation parameter to " << config.theta
-           << endl;
-      cout << "set output file to " << config.output_file << endl;
-    }
+    logger(Level::Info) << "set show help to " << std::boolalpha
+                        << config.show_help << endl;
+    logger(Level::Info) << "set number of body to " << config.number << endl;
+    logger(Level::Info) << "set simulate steps to " << config.steps << endl;
+    logger(Level::Info) << "set time of every single step to " << config.time
+                        << endl;
+    logger(Level::Info) << "set gravitational constant to " << config.G << endl;
+    logger(Level::Info) << "set Barnes-Hut approximation parameter to "
+                        << config.theta << endl;
+    logger(Level::Info) << "set output file to " << config.output_file << endl;
   }
-  mpi::broadcast(world, is_continue, root);
-  if (!is_continue)
+  mpi::broadcast(world, config, ROOT);
+  if (config.show_help) {
+    if (world.rank() == ROOT) {
+      cout << description << std::endl;
+    }
     return 0;
+  }
+  if (world.rank() == ROOT && config.number % world.size() != 0) {
+    logger(Level::Error) << "number of bodies(" << config.number
+                         << ") must be divisible by number of processes("
+                         << world.size() << ")" << std::endl;
+    world.abort(MPI_ERR_ARG);
+  }
 
-  n_body::data::Bodies<Number, DIMENSION> bodies(config.number);
-  n_body::random::MinimunStandardEngine random_engine(world, root);
-  n_body::data::Body<n_body::random::body::RandomNumberGenerator<Number>,
-                     DIMENSION>
+  data::Bodies<Number, DIMENSION> bodies(config.number);
+  random::MinimunStandardEngine random_engine(world, ROOT);
+  data::Body<random::body::RandomNumberGenerator<Number>, DIMENSION>
       body_generator;
   for (size_t d = 0; d < DIMENSION; ++d) {
     body_generator.position[d] = [&] {
@@ -97,25 +113,44 @@ int main(int argc, char *argv[]) {
   body_generator.mass = [&] {
     return std::lognormal_distribution<Number>(-1.0f, 1.0f)(random_engine);
   };
-  n_body::random::body::random_bodies(world, body_generator, bodies);
+  random::body::random_bodies(world, body_generator, bodies);
 
   // dump current bodies
+  for (size_t i = 0; i < bodies.size; ++i) {
+    constexpr int I_WIDTH = 5;
+    auto &lg = logger(Level::Trace);
+    lg << "body " << std::setw(I_WIDTH) << i << " = ";
+    lg << ".position { ";
+    for (size_t d = 0; d < DIMENSION; ++d) {
+      lg << bodies.positions.values[d][i] << ", ";
+    }
+    lg << "}, ";
+    lg << ".velocity {";
+    for (size_t d = 0; d < DIMENSION; ++d) {
+      lg << bodies.velocities.values[d][i] << ", ";
+    }
+    lg << "}, ";
+    lg << ".mass { ";
+    lg << bodies.masses.values[i] << ", ";
+    lg << "}, ";
+    lg << std::endl;
+  }
 
-  n_body::data::Space<Number, DIMENSION> space{
-      {
-          0.f,
-          0.f,
-          0.f,
-      }, // min
-      {
-          0.f,
-          0.f,
-          0.f,
-      }, // max
-  };
+  auto root_space = space::root_space(world, bodies);
+  {
+    auto &lg = logger(Level::Info);
+    lg << "root_space  = ";
+    lg << ".min { " << root_space.min << ", }, ";
+    lg << ".max { " << root_space.max << ", }, ";
+    lg << std::endl;
+  }
 
-  n_body::data::tree::BodyTree<Number, DIMENSION> body_tree;
-  body_tree.push(bodies, space, 0);
+  // data::tree::BodyTree<Number, DIMENSION> body_tree;
+  // body_tree.push(bodies, space, 0);
 
   return 0;
 }
+
+} // namespace n_body
+
+int main(int argc, char *argv[]) { return n_body::main(argc, argv); }

@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.12)
 find_package(MPI REQUIRED)
 find_package(Boost COMPONENTS
         mpi
+        iostreams
         serialization
         log
         program_options
@@ -16,6 +17,8 @@ set(CMAKE_CXX_FLAGS -DBOOST_LOG_DYN_LINK)
 
 add_executable(n-body
         src/main.cpp
+        src/logging.cpp
+        src/communication.cpp
         src/config.hpp
         src/data.hpp
         src/random.hpp
@@ -24,6 +27,7 @@ add_executable(n-body
         src/random_body.hpp
         src/communication.hpp
         src/logging.hpp
+        src/space.hpp
         )
 
 target_include_directories(n-body PRIVATE ${Boost_INCLUDE_DIRS} ${MPI_INCLUDE_PATH})

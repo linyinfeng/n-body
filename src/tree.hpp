@@ -3,7 +3,6 @@
 
 #include "data.hpp"
 #include "overloaded.hpp"
-
 #include <array>
 #include <boost/optional.hpp>
 #include <boost/serialization/optional.hpp>
@@ -61,7 +60,7 @@ template <typename T, std::size_t Dimension> struct BodyTree {
   using leaf_node_type = BodyTreeLeafNode<T, Dimension>;
   using node_type = boost::variant<inner_node_type, leaf_node_type>;
   using bodies_type = Bodies<T, Dimension>;
-  using space_type = Space<T, Dimension>;
+  using space_type = Space<T>;
 
   std::vector<node_type> tree;
 
