@@ -49,16 +49,16 @@ void random_bodies(const boost::mpi::communicator &comm,
   for (std::size_t d = 0; d < Dimension; ++d) {
     logging::logger(logging::Level::Debug)
         << "gathering positions of dimension " << d << std::endl;
-    boost::mpi::all_gather(comm, local_bodies.positions.values[d].get(),
-                           division.count, bodies.positions.values[d].get());
+    boost::mpi::all_gather(comm, &local_bodies.positions.values[d][0],
+                           division.count, bodies.positions.values[d]);
     logging::logger(logging::Level::Debug)
         << "gathering velocities of dimension " << d << std::endl;
-    boost::mpi::all_gather(comm, local_bodies.velocities.values[d].get(),
-                           division.count, bodies.velocities.values[d].get());
+    boost::mpi::all_gather(comm, &local_bodies.velocities.values[d][0],
+                           division.count, bodies.velocities.values[d]);
   }
   logging::logger(logging::Level::Debug) << "gathering masses" << std::endl;
-  boost::mpi::all_gather(comm, local_bodies.masses.values.get(), division.count,
-                         bodies.masses.values.get());
+  boost::mpi::all_gather(comm, &local_bodies.masses.values[0], division.count,
+                         bodies.masses.values);
 }
 
 } // namespace n_body::random::body

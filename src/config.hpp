@@ -2,6 +2,7 @@
 #define N_BODY_CONFIG_HPP
 
 #include <boost/serialization/access.hpp>
+#include <boost/serialization/nvp.hpp>
 #include <string>
 
 namespace n_body::config {
@@ -20,13 +21,13 @@ private:
   friend class boost::serialization::access;
   template <typename Archive>
   void serialize(Archive &ar, const unsigned int /* version */) {
-    ar & this->show_help;
-    ar & this->number;
-    ar & this->steps;
-    ar & this->time;
-    ar & this->G;
-    ar & this->theta;
-    ar & this->output_file;
+    ar & BOOST_SERIALIZATION_NVP(show_help);
+    ar & BOOST_SERIALIZATION_NVP(number);
+    ar & BOOST_SERIALIZATION_NVP(steps);
+    ar & BOOST_SERIALIZATION_NVP(time);
+    ar & BOOST_SERIALIZATION_NVP(G);
+    ar & BOOST_SERIALIZATION_NVP(theta);
+    ar & BOOST_SERIALIZATION_NVP(output_file);
   }
 };
 

@@ -6,8 +6,10 @@
 #include "space.hpp"
 #include "tree.hpp"
 #include <array>
+#include <boost/archive/xml_oarchive.hpp>
 #include <boost/mpi.hpp>
 #include <boost/program_options.hpp>
+#include <boost/serialization/nvp.hpp>
 #include <iostream>
 #include <random>
 
@@ -17,6 +19,7 @@ namespace logging = n_body::logging;
 
 using Number = float;
 
+using boost::archive::xml_oarchive;
 using n_body::logging::Level;
 using n_body::logging::logger;
 using std::array;
@@ -114,39 +117,19 @@ int main(int argc, char *argv[]) {
     return std::lognormal_distribution<Number>(-1.0f, 1.0f)(random_engine);
   };
   random::body::random_bodies(world, body_generator, bodies);
-
-  // dump current bodies
-  for (size_t i = 0; i < bodies.size; ++i) {
-    constexpr int I_WIDTH = 5;
-    auto &lg = logger(Level::Trace);
-    lg << "body " << std::setw(I_WIDTH) << i << " = ";
-    lg << ".position { ";
-    for (size_t d = 0; d < DIMENSION; ++d) {
-      lg << bodies.positions.values[d][i] << ", ";
-    }
-    lg << "}, ";
-    lg << ".velocity {";
-    for (size_t d = 0; d < DIMENSION; ++d) {
-      lg << bodies.velocities.values[d][i] << ", ";
-    }
-    lg << "}, ";
-    lg << ".mass { ";
-    lg << bodies.masses.values[i] << ", ";
-    lg << "}, ";
-    lg << std::endl;
-  }
+  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
+      << BOOST_SERIALIZATION_NVP(bodies);
 
   auto root_space = space::root_space(world, bodies);
-  {
-    auto &lg = logger(Level::Info);
-    lg << "root_space  = ";
-    lg << ".min { " << root_space.min << ", }, ";
-    lg << ".max { " << root_space.max << ", }, ";
-    lg << std::endl;
-  }
+  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
+      << BOOST_SERIALIZATION_NVP(root_space);
 
-  // data::tree::BodyTree<Number, DIMENSION> body_tree;
-  // body_tree.push(bodies, space, 0);
+  data::tree::BodyTree<Number, DIMENSION> body_tree;
+  for (size_t i = 0; i < bodies.size; ++i) {
+    body_tree.push(bodies, root_space, i);
+  }
+  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
+      << BOOST_SERIALIZATION_NVP(body_tree);
 
   return 0;
 }
