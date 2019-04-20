@@ -7,6 +7,8 @@
 #include <memory>
 #include <random>
 
+using std::vector;
+
 namespace mpi = boost::mpi;
 
 namespace n_body::random {
@@ -28,7 +30,7 @@ public:
     const int size = comm.size();
 
     if (comm.rank() == root) {
-      std::vector<UIntType> xs;
+      vector<UIntType> xs;
       xs.reserve(size);
       xs.push_back(seed);
       this->a = 1;
@@ -75,7 +77,9 @@ private:
     }
   }
 
-  UIntType run(UIntType a, UIntType c, UIntType x) { return (a * x + c) % m; }
+  UIntType run(UIntType pa, UIntType pc, UIntType x) {
+    return (pa * x + pc) % m;
+  }
 
   UIntType a;
   UIntType c;

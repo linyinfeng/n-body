@@ -1,12 +1,15 @@
+#include <array>
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/program_options.hpp>
 #include <iostream>
+#include <random>
 
 #include "config.hpp"
 #include "data.hpp"
 #include "random.hpp"
+#include "random_body.hpp"
 #include "tree.hpp"
 
 namespace mpi = boost::mpi;
@@ -15,6 +18,13 @@ namespace po = boost::program_options;
 using Number = float;
 
 using n_body::config::Configuration;
+using std::array;
+using std::cout;
+using std::endl;
+using std::size_t;
+using std::string;
+
+constexpr size_t DIMENSION = 3;
 
 int main(int argc, char *argv[]) {
   mpi::environment env(argc, argv);
@@ -40,8 +50,7 @@ int main(int argc, char *argv[]) {
                               po::value<Number>()->default_value(0.5),
                               "Barnes-Hut approximation parameter");
     description.add_options()(
-        "output,o",
-        po::value<std::string>()->default_value("n-body-output.txt"),
+        "output,o", po::value<string>()->default_value("n-body-output.txt"),
         "output file");
 
     po::variables_map vm;
@@ -49,7 +58,7 @@ int main(int argc, char *argv[]) {
     po::notify(vm);
 
     if (vm.count("help")) {
-      std::cout << description << std::endl;
+      cout << description << endl;
       is_continue = false;
     } else {
       config.number = vm["number"].as<unsigned>();
@@ -57,23 +66,54 @@ int main(int argc, char *argv[]) {
       config.time = vm["time"].as<Number>();
       config.G = vm["gravitational-constant"].as<Number>();
       config.theta = vm["theta"].as<Number>();
-      config.output_file = vm["output"].as<std::string>();
+      config.output_file = vm["output"].as<string>();
 
-      std::cout << "set number of body to " << config.number << std::endl;
-      std::cout << "set simulate steps to " << config.steps << std::endl;
-      std::cout << "set time of every single step to " << config.time
-                << std::endl;
-      std::cout << "set gravitational constant to " << config.G << std::endl;
-      std::cout << "set Barnes-Hut approximation parameter to " << config.theta
-                << std::endl;
-      std::cout << "set output file to " << config.output_file << std::endl;
+      cout << "set number of body to " << config.number << endl;
+      cout << "set simulate steps to " << config.steps << endl;
+      cout << "set time of every single step to " << config.time << endl;
+      cout << "set gravitational constant to " << config.G << endl;
+      cout << "set Barnes-Hut approximation parameter to " << config.theta
+           << endl;
+      cout << "set output file to " << config.output_file << endl;
     }
   }
   mpi::broadcast(world, is_continue, root);
   if (!is_continue)
     return 0;
 
-  n_body::data::Body<Number> body(config.number);
-  n_body::random::MinimunStandardEngine engine(world, root);
+  n_body::data::Bodies<Number, DIMENSION> bodies(config.number);
+  n_body::random::MinimunStandardEngine random_engine(world, root);
+  n_body::data::Body<n_body::random::body::RandomNumberGenerator<Number>,
+                     DIMENSION>
+      body_generator;
+  for (size_t d = 0; d < DIMENSION; ++d) {
+    body_generator.position[d] = [&] {
+      return std::normal_distribution<Number>(0.0f, 1.0f)(random_engine);
+    };
+    body_generator.velocity[d] = [&] {
+      return std::normal_distribution<Number>(0.0f, 1.0f)(random_engine);
+    };
+  }
+  body_generator.mass = [&] {
+    return std::lognormal_distribution<Number>(-1.0f, 1.0f)(random_engine);
+  };
+  n_body::random::body::random_bodies(world, body_generator, bodies);
+
+  n_body::data::Space<Number, DIMENSION> space{
+      {
+          0.f,
+          0.f,
+          0.f,
+      }, // min
+      {
+          0.f,
+          0.f,
+          0.f,
+      }, // max
+  };
+
+  n_body::data::tree::BodyTree<Number, DIMENSION> body_tree;
+  body_tree.push(bodies, space, 0);
+
   return 0;
 }

@@ -19,7 +19,12 @@ add_executable(n-body
         src/config.hpp
         src/data.hpp
         src/random.hpp
-        src/tree.hpp)
+        src/tree.hpp
+        src/overloaded.hpp
+        src/random_body.hpp
+        src/communication.hpp
+        src/logging.hpp
+        )
 
 target_include_directories(n-body PRIVATE ${Boost_INCLUDE_DIRS} ${MPI_INCLUDE_PATH})
 target_link_libraries(n-body PRIVATE ${Boost_LIBRARIES} ${MPI_LIBRARIES})
