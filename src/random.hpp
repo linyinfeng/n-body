@@ -7,10 +7,6 @@
 #include <memory>
 #include <random>
 
-using std::vector;
-
-namespace mpi = boost::mpi;
-
 namespace n_body::random {
 
 template <typename UIntType, UIntType m> class Engine;
@@ -23,14 +19,14 @@ template <typename UIntType, UIntType m> class Engine {
 public:
   using result_type = UIntType;
 
-  Engine(const mpi::communicator &comm, int root, UIntType seed) {
+  Engine(const boost::mpi::communicator &comm, int root, UIntType seed) {
     const UIntType origin_a = 48271;
     const UIntType origin_c = 0;
 
     const int size = comm.size();
 
     if (comm.rank() == root) {
-      vector<UIntType> xs;
+      std::vector<UIntType> xs;
       xs.reserve(size);
       xs.push_back(seed);
       this->a = 1;
@@ -46,15 +42,15 @@ public:
       }
       this->c *= origin_c;
 
-      mpi::scatter(comm, xs, this->current, root);
+      boost::mpi::scatter(comm, xs, this->current, root);
     } else {
-      mpi::scatter(comm, this->current, root);
+      boost::mpi::scatter(comm, this->current, root);
     }
-    mpi::broadcast(comm, this->a, root);
-    mpi::broadcast(comm, this->c, root);
+    boost::mpi::broadcast(comm, this->a, root);
+    boost::mpi::broadcast(comm, this->c, root);
   }
 
-  Engine(const mpi::communicator &comm, int root)
+  Engine(const boost::mpi::communicator &comm, int root)
       : Engine(comm, root, new_seed_in_root(comm, root)) {}
 
   static constexpr result_type min() { return 1; }
@@ -67,7 +63,8 @@ public:
   }
 
 private:
-  static UIntType new_seed_in_root(const mpi::communicator &comm, int root) {
+  static UIntType new_seed_in_root(const boost::mpi::communicator &comm,
+                                   int root) {
     if (comm.rank() == root) {
       std::random_device rd;
       std::uniform_int_distribution<UIntType> dist(min(), max());

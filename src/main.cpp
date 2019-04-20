@@ -99,6 +99,8 @@ int main(int argc, char *argv[]) {
   };
   n_body::random::body::random_bodies(world, body_generator, bodies);
 
+  // dump current bodies
+
   n_body::data::Space<Number, DIMENSION> space{
       {
           0.f,

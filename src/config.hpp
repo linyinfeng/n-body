@@ -3,8 +3,6 @@
 
 #include <string>
 
-using std::string;
-
 namespace n_body::config {
 
 template <typename T> struct Configuration {
@@ -13,7 +11,7 @@ template <typename T> struct Configuration {
   T time;
   T G;
   T theta;
-  string output_file;
+  std::string output_file;
 };
 
 } // namespace n_body::config

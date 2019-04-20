@@ -5,21 +5,18 @@
 #include <cstddef>
 #include <memory>
 
-using std::array;
-using std::shared_ptr;
-using std::size_t;
-
 namespace n_body::data {
 
-template <typename T, size_t Dimension> using Vector = array<T, Dimension>;
+template <typename T, std::size_t Dimension>
+using Vector = std::array<T, Dimension>;
 
 template <typename T, size_t Dimension> struct Vectors {
 public:
-  array<shared_ptr<T[]>, Dimension> values;
+  std::array<std::shared_ptr<T[]>, Dimension> values;
 
-  explicit Vectors(size_t count) {
-    for (size_t i = 0; i < Dimension; ++i) {
-      new (&values[i]) shared_ptr<T[]>(new T[count]);
+  explicit Vectors(std::size_t count) {
+    for (std::size_t i = 0; i < Dimension; ++i) {
+      new (&values[i]) std::shared_ptr<T[]>(new T[count]);
     }
   }
 };
@@ -28,12 +25,12 @@ template <typename T> using Scalar = T;
 
 template <typename T> struct Scalars {
 public:
-  shared_ptr<T[]> values;
+  std::shared_ptr<T[]> values;
 
-  explicit Scalars(size_t count) : values(new T[count]) {}
+  explicit Scalars(std::size_t count) : values(new T[count]) {}
 };
 
-template <typename T, size_t Dimension> struct Body {
+template <typename T, std::size_t Dimension> struct Body {
   using vector_type = Vector<T, Dimension>;
   using scalar_type = Scalar<T>;
 
@@ -42,23 +39,24 @@ template <typename T, size_t Dimension> struct Body {
   scalar_type mass;
 };
 
-template <typename T, size_t Dimension> struct Bodies {
+template <typename T, std::size_t Dimension> struct Bodies {
   using vectors_type = Vectors<T, Dimension>;
   using vector_type = Vector<T, Dimension>;
   using scalars_type = Scalars<T>;
   using scalar_type = Scalar<T>;
   using body_type = Body<T, Dimension>;
 
-  size_t size;
+  std::size_t size;
   vectors_type positions;
   vectors_type velocities;
   scalars_type masses;
 
   Bodies() = delete;
-  explicit Bodies(size_t n) : positions(n), velocities(n), masses(n), size(n) {}
+  explicit Bodies(std::size_t n)
+      : positions(n), velocities(n), masses(n), size(n) {}
 
-  void set_body(size_t index, const body_type &body) {
-    for (size_t d = 0; d < Dimension; ++d) {
+  void set_body(std::size_t index, const body_type &body) {
+    for (std::size_t d = 0; d < Dimension; ++d) {
       this->positions.values[d][index] = body.position[d];
       this->velocities.values[d][index] = body.velocity[d];
     }
@@ -66,7 +64,7 @@ template <typename T, size_t Dimension> struct Bodies {
   }
 };
 
-template <typename T, size_t Dimension> struct Space {
+template <typename T, std::size_t Dimension> struct Space {
   using vector_type = Vector<T, Dimension>;
 
   vector_type min;
