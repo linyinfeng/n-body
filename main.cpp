@@ -1,10 +1,12 @@
-#include "config.hpp"
-#include "data.hpp"
-#include "logging.hpp"
-#include "random.hpp"
-#include "random_body.hpp"
-#include "space.hpp"
-#include "tree.hpp"
+#include "src/config.hpp"
+#include "src/data.hpp"
+#include "src/logging.hpp"
+#include "src/physical.hpp"
+#include "src/random.hpp"
+#include "src/random_body.hpp"
+#include "src/space.hpp"
+#include "src/tree.hpp"
+#include <algorithm>
 #include <array>
 #include <boost/archive/xml_oarchive.hpp>
 #include <boost/mpi.hpp>
@@ -12,6 +14,8 @@
 #include <boost/serialization/nvp.hpp>
 #include <iostream>
 #include <random>
+
+#include <fenv.h>
 
 namespace mpi = boost::mpi;
 namespace po = boost::program_options;
@@ -34,11 +38,14 @@ constexpr int ROOT = 0;
 namespace n_body {
 
 int main(int argc, char *argv[]) {
+  feenableexcept(FE_INVALID | FE_OVERFLOW);
+
   mpi::environment env(argc, argv, false);
   mpi::communicator world;
   mpi::timer timer;
 
   // setup logger
+  logging::Configuration::instance().min_level = logging::Level::Trace;
   logging::Configuration::instance().default_communicator = &world;
   logging::Configuration::instance().timer = &timer;
 
@@ -101,7 +108,7 @@ int main(int argc, char *argv[]) {
     world.abort(MPI_ERR_ARG);
   }
 
-  data::Bodies<Number, DIMENSION> bodies(config.number);
+  data::Bodies<Number, DIMENSION> bodies;
   random::MinimunStandardEngine random_engine(world, ROOT);
   data::Body<random::body::RandomNumberGenerator<Number>, DIMENSION>
       body_generator;
@@ -116,7 +123,8 @@ int main(int argc, char *argv[]) {
   body_generator.mass = [&] {
     return std::lognormal_distribution<Number>(-1.0f, 1.0f)(random_engine);
   };
-  random::body::random_bodies(world, body_generator, bodies);
+
+  random::body::random_bodies(world, body_generator, bodies, config.number);
   xml_oarchive{logger(Level::Trace), boost::archive::no_header}
       << BOOST_SERIALIZATION_NVP(bodies);
 
@@ -124,13 +132,19 @@ int main(int argc, char *argv[]) {
   xml_oarchive{logger(Level::Trace), boost::archive::no_header}
       << BOOST_SERIALIZATION_NVP(root_space);
 
-  data::tree::BodyTree<Number, DIMENSION> body_tree;
-  for (size_t i = 0; i < bodies.size; ++i) {
-    body_tree.push(bodies, root_space, i);
-  }
+  auto body_tree = data::tree::build_tree(world, root_space, bodies);
   xml_oarchive{logger(Level::Trace), boost::archive::no_header}
       << BOOST_SERIALIZATION_NVP(body_tree);
 
+  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
+      << BOOST_SERIALIZATION_NVP(bodies);
+
+  physical::step(world, bodies, body_tree, config.time, config.G, config.theta);
+
+  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
+      << BOOST_SERIALIZATION_NVP(bodies);
+
+  logging::logger(logging::Level::Info) << "finished" << std::endl;
   return 0;
 }
 

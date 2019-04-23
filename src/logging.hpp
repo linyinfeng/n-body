@@ -27,7 +27,7 @@ struct Configuration {
       boost::iostreams::null_sink()};
   const boost::mpi::timer *timer = nullptr;
   const boost::mpi::communicator *default_communicator = nullptr;
-  Level min_level = Level::Trace;
+  Level min_level = Level::Info;
   std::ostream *output = nullptr;
   int time_width = 20;
   int rank_width = 5;

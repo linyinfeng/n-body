@@ -4,6 +4,7 @@
 #include <array>
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/nvp.hpp>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <tuple>
@@ -14,79 +15,7 @@ namespace n_body::data {
 template <typename T, std::size_t Dimension>
 using Vector = std::array<T, Dimension>;
 
-template <typename T, size_t Dimension> struct Vectors {
-public:
-  std::array<std::vector<T>, Dimension> values;
-
-  explicit Vectors(std::size_t count) {
-    for (std::size_t d = 0; d < Dimension; ++d) {
-      values[d].reserve(count);
-      for (std::size_t i = 0; i < count; ++i) {
-        values[d].push_back(0);
-      }
-    }
-  }
-
-  Vector<T *, Dimension> get_pointer(std::size_t i) {
-    Vector<T *, Dimension> result;
-    for (std::size_t d = 0; d < Dimension; ++d) {
-      result[d] = &this->values[d][i];
-    }
-    return result;
-  }
-
-  Vector<const T *, Dimension> get_pointer(std::size_t i) const {
-    Vector<const T *, Dimension> result;
-    for (std::size_t d = 0; d < Dimension; ++d) {
-      result[d] = &this->values[d][i];
-    }
-    return result;
-  }
-
-  Vector<T, Dimension> get(std::size_t i) const {
-    Vector<T, Dimension> result;
-    for (std::size_t d = 0; d < Dimension; ++d) {
-      result[d] = this->values[d][i];
-    }
-    return result;
-  }
-
-private:
-  /* serialization */
-  friend class boost::serialization::access;
-  template <typename Archive>
-  void serialize(Archive &ar, const unsigned int /* version */) {
-    ar &BOOST_SERIALIZATION_NVP(values);
-  }
-};
-
 template <typename T> using Scalar = T;
-
-template <typename T> struct Scalars {
-public:
-  std::vector<T> values;
-
-  explicit Scalars(std::size_t count) {
-    values.reserve(count);
-    for (std::size_t i = 0; i < count; ++i) {
-      values.push_back(0);
-    }
-  }
-
-  Scalar<T *> get_pointer(std::size_t i) { return &values[i]; }
-
-  Scalar<const T *> get_pointer(std::size_t i) const { return &values[i]; }
-
-  Scalar<T> get(std::size_t i) const { return values[i]; }
-
-private:
-  /* serialization */
-  friend class boost::serialization::access;
-  template <typename Archive>
-  void serialize(Archive &ar, const unsigned int /* version */) {
-    ar &BOOST_SERIALIZATION_NVP(values);
-  }
-};
 
 template <typename T, std::size_t Dimension> struct Body {
   using vector_type = Vector<T, Dimension>;
@@ -107,65 +36,8 @@ private:
   }
 };
 
-template <typename T, std::size_t Dimension> struct Bodies {
-  using vectors_type = Vectors<T, Dimension>;
-  using vector_type = Vector<T, Dimension>;
-  using scalars_type = Scalars<T>;
-  using scalar_type = Scalar<T>;
-  using body_type = Body<T, Dimension>;
-
-  std::size_t size;
-  vectors_type positions;
-  vectors_type velocities;
-  scalars_type masses;
-
-  Bodies() = delete;
-  explicit Bodies(std::size_t n)
-      : positions(n), velocities(n), masses(n), size(n) {}
-
-  Body<T *, Dimension> get_pointer(std::size_t i) {
-    return {
-        this->positions.get_pointer(i),
-        this->velocities.get_pointer(i),
-        this->masses.get_pointer(i),
-    };
-  }
-
-  Body<const T *, Dimension> get_pointer(std::size_t i) const {
-    return {
-        this->positions.get_pointer(i),
-        this->velocities.get_pointer(i),
-        this->masses.get_pointer(i),
-    };
-  }
-
-  Body<T, Dimension> get(std::size_t i) const {
-    return {
-        this->positions.get(i),
-        this->velocities.get(i),
-        this->masses.get(i),
-    };
-  }
-
-  void set_body(std::size_t index, const body_type &body) {
-    for (std::size_t d = 0; d < Dimension; ++d) {
-      this->positions.values[d][index] = body.position[d];
-      this->velocities.values[d][index] = body.velocity[d];
-    }
-    this->masses.values[index] = body.mass;
-  }
-
-private:
-  /* serialization */
-  friend class boost::serialization::access;
-  template <typename Archive>
-  void serialize(Archive &ar, const unsigned int /* version */) {
-    ar &BOOST_SERIALIZATION_NVP(size);
-    ar &BOOST_SERIALIZATION_NVP(positions);
-    ar &BOOST_SERIALIZATION_NVP(velocities);
-    ar &BOOST_SERIALIZATION_NVP(masses);
-  }
-};
+template <typename T, std::size_t Dimension>
+using Bodies = std::vector<Body<T, Dimension>>;
 
 template <typename T, std::size_t Dimension> struct Space {
   using vector_type = Vector<T, Dimension>;
@@ -224,6 +96,15 @@ Vector<T, Dimension> operator-(const Vector<T, Dimension> &v) {
 }
 
 template <typename T, std::size_t Dimension>
+Scalar<T> module_of(const Vector<T, Dimension> &v) {
+  T sum = 0;
+  for (auto x : v) {
+    sum += x * x;
+  }
+  return std::sqrt(sum);
+}
+
+template <typename T, std::size_t Dimension>
 Vector<T, Dimension> &operator-=(Vector<T, Dimension> &v1,
                                  const Vector<T, Dimension> &v2) {
   for (std::size_t d = 0; d < Dimension; ++d) {
@@ -235,7 +116,7 @@ Vector<T, Dimension> &operator-=(Vector<T, Dimension> &v1,
 template <typename T, std::size_t Dimension>
 Vector<T, Dimension> operator*(const Scalar<T> &s,
                                const Vector<T, Dimension> &v) {
-  Vector<T, Dimension> result;
+  Vector<T, Dimension> result{};
   for (std::size_t d = 0; d < Dimension; ++d) {
     result[d] = v[d] * s;
   }

@@ -14,18 +14,17 @@ namespace n_body::space {
 template <typename T, std::size_t Dimension>
 data::Space<T, Dimension> root_space(const boost::mpi::communicator &comm,
                                      const data::Bodies<T, Dimension> &bodies) {
-  communication::Division division(comm, bodies.size);
-  const auto &positions = bodies.positions.values;
+  communication::Division division(comm, bodies.size());
 
   T min = std::numeric_limits<T>::max();
   T max = std::numeric_limits<T>::min();
 
-  for (std::size_t d = 0; d < Dimension; ++d) {
-    for (auto i = division.begin; i < division.end; ++i) {
-      if (positions[d][i] < min)
-        min = positions[d][i];
-      if (positions[d][i] > max)
-        max = positions[d][i];
+  for (auto i = division.begin; i < division.end; ++i) {
+    for (std::size_t d = 0; d < Dimension; ++d) {
+      if (bodies[i].position[d] < min)
+        min = bodies[i].position[d];
+      if (bodies[i].position[d] > max)
+        max = bodies[i].position[d];
     }
   }
 
@@ -35,6 +34,31 @@ data::Space<T, Dimension> root_space(const boost::mpi::communicator &comm,
     boost::mpi::all_reduce(comm, boost::mpi::inplace(max),
                            boost::mpi::maximum<T>());
   }
+  data::Space<T, Dimension> space{};
+  for (std::size_t d = 0; d < Dimension; ++d) {
+    space.min[d] = min;
+    space.max[d] = max;
+    space.center[d] = (max + min) / 2;
+  }
+  return space;
+}
+
+// TODO infer T and Dimension
+template <typename T, std::size_t Dimension, typename Iter>
+data::Space<T, Dimension> root_space(Iter first, Iter last) {
+
+  T min = std::numeric_limits<T>::max();
+  T max = std::numeric_limits<T>::min();
+
+  for (; first != last; ++first) {
+    for (std::size_t d = 0; d < Dimension; ++d) {
+      if (first->position[d] < min)
+        min = first->position[d];
+      if (first->position[d] > max)
+        max = first->position[d];
+    }
+  }
+
   data::Space<T, Dimension> space{};
   for (std::size_t d = 0; d < Dimension; ++d) {
     space.min[d] = min;
@@ -86,6 +110,11 @@ std::size_t part_of_space(const data::Space<T, Dimension> &space,
     }
   }
   return result;
+}
+
+template <typename T, std::size_t Dimension>
+std::size_t size_of_space(const data::Space<T, Dimension> &space) {
+  return space.max[0] - space.min[0];
 }
 
 }; // namespace n_body::space

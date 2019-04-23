@@ -27,38 +27,26 @@ random_body(data::Body<RandomNumberGenerator<T>, Dimension> &generator) {
 template <typename T, std::size_t Dimension>
 void random_bodies(const boost::mpi::communicator &comm,
                    data::Body<RandomNumberGenerator<T>, Dimension> &generator,
-                   data::Bodies<T, Dimension> &bodies) {
-  communication::Division division(comm, bodies.size);
-  data::Bodies<T, Dimension> local_bodies(division.count);
+                   data::Bodies<T, Dimension> &bodies, std::size_t number) {
+  communication::Division division(comm, number);
+  data::Bodies<T, Dimension> local_bodies;
 
   // generate all data in local bodies
-  for (std::size_t d = 0; d < Dimension; ++d) {
-    for (std::size_t i = 0; i < division.count; ++i) {
-      local_bodies.positions.values[d][i] = generator.position[d]();
-      local_bodies.velocities.values[d][i] = generator.velocity[d]();
-    }
-  }
   for (std::size_t i = 0; i < division.count; ++i) {
-    local_bodies.masses.values[i] = generator.mass();
+    local_bodies.emplace_back();
+    for (std::size_t d = 0; d < Dimension; ++d) {
+      local_bodies[i].position[d] = generator.position[d]();
+      local_bodies[i].velocity[d] = generator.velocity[d]();
+    }
+    local_bodies[i].mass = generator.mass();
   }
 
   logging::logger(logging::Level::Debug)
       << "random_bodies() main task done, about to gather" << std::endl;
 
   // send and receive all data
-  for (std::size_t d = 0; d < Dimension; ++d) {
-    logging::logger(logging::Level::Debug)
-        << "gathering positions of dimension " << d << std::endl;
-    boost::mpi::all_gather(comm, &local_bodies.positions.values[d][0],
-                           division.count, bodies.positions.values[d]);
-    logging::logger(logging::Level::Debug)
-        << "gathering velocities of dimension " << d << std::endl;
-    boost::mpi::all_gather(comm, &local_bodies.velocities.values[d][0],
-                           division.count, bodies.velocities.values[d]);
-  }
   logging::logger(logging::Level::Debug) << "gathering masses" << std::endl;
-  boost::mpi::all_gather(comm, &local_bodies.masses.values[0], division.count,
-                         bodies.masses.values);
+  boost::mpi::all_gather(comm, &local_bodies[0], division.count, bodies);
 }
 
 } // namespace n_body::random::body
