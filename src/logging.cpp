@@ -1,5 +1,7 @@
 
 #include "logging.hpp"
+#include <boost/iostreams/device/null.hpp>
+#include <boost/iostreams/stream.hpp>
 
 namespace n_body::logging {
 
@@ -23,6 +25,24 @@ std::ostream &operator<<(std::ostream &os, Level level) {
   default:
     return os << "ukn";
   }
+}
+
+std::istream &operator>>(std::istream &is, Level &level) {
+  std::string label;
+  is >> label;
+  if (label == "trace")
+    level = Level::Trace;
+  else if (label == "debug")
+    level = Level::Debug;
+  else if (label == "warn")
+    level = Level::Warn;
+  else if (label == "error")
+    level = Level::Error;
+  else if (label == "info")
+    level = (Level::Info);
+  else
+    is.setstate(std::ios::failbit);
+  return is;
 }
 
 bool should_output(Level level) {
@@ -53,7 +73,9 @@ std::ostream &level_to_stream(Level level) {
       }
     }
   } else {
-    return configuration.null_stream;
+    static boost::iostreams::stream<boost::iostreams::null_sink> null_stream{
+        boost::iostreams::null_sink{}};
+    return null_stream;
   }
 }
 

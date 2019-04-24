@@ -1,6 +1,8 @@
 #include "src/config.hpp"
 #include "src/data.hpp"
+#include "src/input.hpp"
 #include "src/logging.hpp"
+#include "src/output.hpp"
 #include "src/physical.hpp"
 #include "src/random.hpp"
 #include "src/random_body.hpp"
@@ -10,18 +12,21 @@
 #include <array>
 #include <boost/archive/xml_oarchive.hpp>
 #include <boost/mpi.hpp>
+#include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <boost/serialization/nvp.hpp>
+#include <cfenv>
+#include <cmath>
+#include <fenv.h>
+#include <fstream>
 #include <iostream>
 #include <random>
-
-#include <fenv.h>
 
 namespace mpi = boost::mpi;
 namespace po = boost::program_options;
 namespace logging = n_body::logging;
 
-using Number = float;
+using Number = double;
 
 using boost::archive::xml_oarchive;
 using n_body::logging::Level;
@@ -38,16 +43,13 @@ constexpr int ROOT = 0;
 namespace n_body {
 
 int main(int argc, char *argv[]) {
-  feenableexcept(FE_INVALID | FE_OVERFLOW);
+  // enable overflow check
+  std::feclearexcept(FE_ALL_EXCEPT);
+  feenableexcept(FE_DIVBYZERO | FE_UNDERFLOW | FE_OVERFLOW | FE_INVALID);
 
   mpi::environment env(argc, argv, false);
   mpi::communicator world;
   mpi::timer timer;
-
-  // setup logger
-  logging::Configuration::instance().min_level = logging::Level::Trace;
-  logging::Configuration::instance().default_communicator = &world;
-  logging::Configuration::instance().timer = &timer;
 
   config::Configuration<Number> config;
   po::options_description description("options");
@@ -56,8 +58,12 @@ int main(int argc, char *argv[]) {
     description.add_options()("number,n",
                               po::value<unsigned>()->default_value(100),
                               "number of bodies");
-    description.add_options()(
-        "steps,s", po::value<unsigned>()->default_value(100), "simulate steps");
+    description.add_options()("steps,s",
+                              po::value<unsigned>()->default_value(1000),
+                              "simulate steps");
+    description.add_options()("sample-interval",
+                              po::value<unsigned>()->default_value(10),
+                              "Sample interval");
     description.add_options()("time,t", po::value<Number>()->default_value(1),
                               "time of every single step(s)");
     description.add_options()("gravitational-constant,G",
@@ -69,6 +75,15 @@ int main(int argc, char *argv[]) {
     description.add_options()(
         "output,o", po::value<string>()->default_value("n-body-output.txt"),
         "output file");
+    description.add_options()("input,i", po::value<string>(),
+                              "input bodies file");
+    description.add_options()(
+        "min-log-level,m",
+        po::value<logging::Level>()->default_value(logging::Level::Info),
+        "Minimal log level");
+    description.add_options()("soften-length",
+                              po::value<Number>()->default_value(0),
+                              "Soften length parameter");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, description), vm);
@@ -78,29 +93,33 @@ int main(int argc, char *argv[]) {
       config.show_help = true;
     config.number = vm["number"].as<unsigned>();
     config.steps = vm["steps"].as<unsigned>();
+    config.sample_interval = vm["sample-interval"].as<unsigned>();
     config.time = vm["time"].as<Number>();
     config.G = vm["gravitational-constant"].as<Number>();
     config.theta = vm["theta"].as<Number>();
+    config.soften_length = vm["soften-length"].as<Number>();
+    if (vm.count("input")) {
+      config.input_file = vm["input"].as<string>();
+    } else {
+      config.input_file = boost::none;
+    }
     config.output_file = vm["output"].as<string>();
-
-    logger(Level::Info) << "set show help to " << std::boolalpha
-                        << config.show_help << endl;
-    logger(Level::Info) << "set number of body to " << config.number << endl;
-    logger(Level::Info) << "set simulate steps to " << config.steps << endl;
-    logger(Level::Info) << "set time of every single step to " << config.time
-                        << endl;
-    logger(Level::Info) << "set gravitational constant to " << config.G << endl;
-    logger(Level::Info) << "set Barnes-Hut approximation parameter to "
-                        << config.theta << endl;
-    logger(Level::Info) << "set output file to " << config.output_file << endl;
+    config.min_log_level = vm["min-log-level"].as<logging::Level>();
   }
   mpi::broadcast(world, config, ROOT);
+
   if (config.show_help) {
     if (world.rank() == ROOT) {
       cout << description << std::endl;
     }
     return 0;
   }
+
+  // setup logger
+  logging::Configuration::instance().default_communicator = &world;
+  logging::Configuration::instance().timer = &timer;
+  logging::Configuration::instance().min_level = config.min_log_level;
+
   if (world.rank() == ROOT && config.number % world.size() != 0) {
     logger(Level::Error) << "number of bodies(" << config.number
                          << ") must be divisible by number of processes("
@@ -108,43 +127,69 @@ int main(int argc, char *argv[]) {
     world.abort(MPI_ERR_ARG);
   }
 
-  data::Bodies<Number, DIMENSION> bodies;
-  random::MinimunStandardEngine random_engine(world, ROOT);
-  data::Body<random::body::RandomNumberGenerator<Number>, DIMENSION>
-      body_generator;
-  for (size_t d = 0; d < DIMENSION; ++d) {
-    body_generator.position[d] = [&] {
-      return std::normal_distribution<Number>(0.0f, 1.0f)(random_engine);
-    };
-    body_generator.velocity[d] = [&] {
-      return std::normal_distribution<Number>(0.0f, 1.0f)(random_engine);
-    };
+  if (world.rank() == ROOT) {
+    boost::archive::xml_oarchive(logging::logger(logging::Level::Info)
+                                     << "dump configuration\n",
+                                 boost::archive::no_header)
+        << boost::serialization::make_nvp("configuration", config);
   }
-  body_generator.mass = [&] {
-    return std::lognormal_distribution<Number>(-1.0f, 1.0f)(random_engine);
-  };
 
-  random::body::random_bodies(world, body_generator, bodies, config.number);
-  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
-      << BOOST_SERIALIZATION_NVP(bodies);
+  boost::optional<std::ofstream> outfile = boost::none;
+  if (world.rank() == ROOT) {
+    outfile = std::ofstream(config.output_file);
+  }
 
-  auto root_space = space::root_space(world, bodies);
-  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
-      << BOOST_SERIALIZATION_NVP(root_space);
+  boost::optional<std::ifstream> infile = boost::none;
+  if (world.rank() == ROOT && config.input_file) {
+    infile = std::ifstream(*config.input_file);
+  }
 
-  auto body_tree = data::tree::build_tree(world, root_space, bodies);
-  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
-      << BOOST_SERIALIZATION_NVP(body_tree);
+  data::Bodies<Number, DIMENSION> bodies;
+  if (infile) {
+    input::input_bodies(*infile, bodies);
+  } else {
+    random::MinimunStandardEngine random_engine(world, ROOT);
+    random::body::BodyGenerator<Number, DIMENSION> body_generator =
+        [&](std::size_t i) {
+          auto min = static_cast<Number>(-10) * config.number;
+          auto max = static_cast<Number>(10) * config.number;
+          data::Body<Number, DIMENSION> body{};
+          for (std::size_t d = 0; d < DIMENSION; ++d) {
+            body.position[d] =
+                std::uniform_real_distribution<Number>(min, max)(random_engine);
+            body.velocity[d] = 0;
+          }
+          body.mass = 1;
+          return body;
+        };
+    random::body::random_bodies(world, body_generator, bodies, config.number);
+  }
 
-  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
-      << BOOST_SERIALIZATION_NVP(bodies);
+  if (world.rank() == ROOT) {
+    boost::archive::xml_oarchive(logging::logger(logging::Level::Info)
+                                     << "dump bodies\n",
+                                 boost::archive::no_header)
+        << BOOST_SERIALIZATION_NVP(bodies);
+  }
 
-  physical::step(world, bodies, body_tree, config.time, config.G, config.theta);
+  if (world.rank() == ROOT) {
+    output::output_positions(*outfile, bodies);
+    logger(Level::Info) << "output initial state finished" << endl;
+  }
+  for (decltype(config.steps) s = 0; s < config.steps;) {
+    auto root_space = space::root_space(world, bodies);
+    auto body_tree = data::tree::build_tree(world, root_space, bodies);
+    physical::step(world, bodies, body_tree, config.time, config.G,
+                   config.theta, config.soften_length);
 
-  xml_oarchive{logger(Level::Trace), boost::archive::no_header}
-      << BOOST_SERIALIZATION_NVP(bodies);
+    ++s;
 
-  logging::logger(logging::Level::Info) << "finished" << std::endl;
+    if (world.rank() == ROOT && s % config.sample_interval == 0) {
+      // do sample
+      output::output_positions(*outfile, bodies);
+      logger(Level::Info) << "output step " << s << " finished" << endl;
+    }
+  }
   return 0;
 }
 

@@ -356,10 +356,11 @@ BodyTree<T, Dimension> build_tree(const boost::mpi::communicator &comm,
       << "start merging local trees" << std::endl;
   boost::mpi::all_reduce(comm, boost::mpi::inplace(tree),
                          [&bodies](const auto &t1, const auto &t2) {
+                           logging::logger(logging::Level::Trace)
+                               << "merge tree " << &t1 << " and " << &t2
+                               << std::endl;
                            return merge_tree(t1, t2, bodies);
                          });
-  logging::logger(logging::Level::Trace)
-      << "tree merging finished" << std::endl;
   return tree;
 }
 

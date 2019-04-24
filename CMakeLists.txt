@@ -27,7 +27,9 @@ add_library(n-body-lib
         src/communication.hpp
         src/logging.hpp
         src/space.hpp
-        src/physical.hpp)
+        src/physical.hpp
+        src/output.hpp
+        src/input.hpp)
 
 target_include_directories(n-body-lib PRIVATE
         ${Boost_INCLUDE_DIRS}
