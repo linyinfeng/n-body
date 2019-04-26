@@ -10,7 +10,7 @@ namespace n_body::config {
 
 template <typename T> struct Configuration {
   bool show_help = false;
-  unsigned number = 0;
+  boost::optional<unsigned> number = 0;
   unsigned steps = 0;
   unsigned sample_interval = 0;
   T time;

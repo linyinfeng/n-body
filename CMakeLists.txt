@@ -11,7 +11,6 @@ find_package(Boost COMPONENTS
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
 enable_testing()
 
@@ -48,6 +47,8 @@ target_link_libraries(n-body PRIVATE
         n-body-lib
         ${Boost_LIBRARIES}
         ${MPI_LIBRARIES})
+
+add_subdirectory(generator)
 
 add_executable(n-body-test
         test/test.cpp

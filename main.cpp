@@ -55,8 +55,7 @@ int main(int argc, char *argv[]) {
   po::options_description description("options");
   if (world.rank() == ROOT) {
     description.add_options()("help,h", "print help message");
-    description.add_options()("number,n",
-                              po::value<unsigned>()->default_value(100),
+    description.add_options()("number,n", po::value<unsigned>(),
                               "number of bodies");
     description.add_options()("steps,s",
                               po::value<unsigned>()->default_value(1000),
@@ -91,7 +90,11 @@ int main(int argc, char *argv[]) {
 
     if (vm.count("help"))
       config.show_help = true;
-    config.number = vm["number"].as<unsigned>();
+    if (vm.count("number")) {
+      config.number = vm["number"].as<unsigned>();
+    } else {
+      config.number = boost::none;
+    }
     config.steps = vm["steps"].as<unsigned>();
     config.sample_interval = vm["sample-interval"].as<unsigned>();
     config.time = vm["time"].as<Number>();
@@ -120,18 +123,18 @@ int main(int argc, char *argv[]) {
   logging::Configuration::instance().timer = &timer;
   logging::Configuration::instance().min_level = config.min_log_level;
 
-  if (world.rank() == ROOT && config.number % world.size() != 0) {
-    logger(Level::Error) << "number of bodies(" << config.number
-                         << ") must be divisible by number of processes("
-                         << world.size() << ")" << std::endl;
-    world.abort(MPI_ERR_ARG);
-  }
-
   if (world.rank() == ROOT) {
     boost::archive::xml_oarchive(logging::logger(logging::Level::Info)
                                      << "dump configuration\n",
                                  boost::archive::no_header)
         << boost::serialization::make_nvp("configuration", config);
+
+    if (config.input_file && config.number) {
+      logger(Level::Error) << "input file and number options should not be "
+                              "specified simultaneously"
+                           << std::endl;
+      world.abort(MPI_ERR_ARG);
+    }
   }
 
   boost::optional<std::ofstream> outfile = boost::none;
@@ -146,13 +149,23 @@ int main(int argc, char *argv[]) {
 
   data::Bodies<Number, DIMENSION> bodies;
   if (infile) {
-    input::input_bodies(*infile, bodies);
-  } else {
+    input::input_bodies(world, ROOT, *infile, bodies);
+    config.number = bodies.size();
+  }
+
+  if (*config.number % world.size() != 0) {
+    logger(Level::Error) << "number of bodies(" << *config.number
+                         << ") must be divisible by number of processes("
+                         << world.size() << ")" << std::endl;
+    world.abort(MPI_ERR_ARG);
+  }
+
+  if (!infile) {
     random::MinimunStandardEngine random_engine(world, ROOT);
     random::body::BodyGenerator<Number, DIMENSION> body_generator =
         [&](std::size_t i) {
-          auto min = static_cast<Number>(-10) * config.number;
-          auto max = static_cast<Number>(10) * config.number;
+          auto min = static_cast<Number>(-10) * *config.number;
+          auto max = static_cast<Number>(10) * *config.number;
           data::Body<Number, DIMENSION> body{};
           for (std::size_t d = 0; d < DIMENSION; ++d) {
             body.position[d] =
@@ -162,7 +175,7 @@ int main(int argc, char *argv[]) {
           body.mass = 1;
           return body;
         };
-    random::body::random_bodies(world, body_generator, bodies, config.number);
+    random::body::random_bodies(world, body_generator, bodies, *config.number);
   }
 
   if (world.rank() == ROOT) {
