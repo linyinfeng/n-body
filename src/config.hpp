@@ -18,7 +18,7 @@ template <typename T> struct Configuration {
   T theta;
   T soften_length;
   boost::optional<std::string> input_file;
-  std::string output_file;
+  std::string output_path;
   logging::Level min_log_level = logging::Level::Info;
 
 private:
@@ -35,7 +35,7 @@ private:
     ar &BOOST_SERIALIZATION_NVP(theta);
     ar &BOOST_SERIALIZATION_NVP(soften_length);
     ar &BOOST_SERIALIZATION_NVP(input_file);
-    ar &BOOST_SERIALIZATION_NVP(output_file);
+    ar &BOOST_SERIALIZATION_NVP(output_path);
     logging::level_serializer level_serializer(min_log_level);
     ar &boost::serialization::make_nvp("min_log_level", level_serializer);
   }

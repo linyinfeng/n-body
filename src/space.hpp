@@ -117,6 +117,25 @@ std::size_t size_of_space(const data::Space<T, Dimension> &space) {
   return space.max[0] - space.min[0];
 }
 
+template <typename T, std::size_t Dimension>
+void extend_to_contain(data::Space<T, Dimension> &space,
+                       const data::Space<T, Dimension> &other) {
+  for (std::size_t d = 0; d < Dimension; ++d) {
+    bool changed = false;
+    if (other.max[d] > space.max[d]) {
+      space.max[d] = other.max[d];
+      changed = true;
+    }
+    if (other.min[d] < space.min[d]) {
+      space.min[d] = other.min[d];
+      changed = true;
+    }
+    if (changed) {
+      space.center[d] = (space.max[d] + space.min[d]) / 2;
+    }
+  }
+}
+
 }; // namespace n_body::space
 
 #endif

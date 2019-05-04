@@ -18,13 +18,16 @@
 #include <cfenv>
 #include <cmath>
 #include <fenv.h>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <random>
 
 namespace mpi = boost::mpi;
 namespace po = boost::program_options;
 namespace logging = n_body::logging;
+namespace fs = std::filesystem;
 
 using Number = double;
 
@@ -72,8 +75,8 @@ int main(int argc, char *argv[]) {
                               po::value<Number>()->default_value(0.5),
                               "Barnes-Hut approximation parameter");
     description.add_options()(
-        "output,o", po::value<string>()->default_value("n-body-output.txt"),
-        "output file");
+        "output,o", po::value<string>()->default_value("n-body-output"),
+        "output directory");
     description.add_options()("input,i", po::value<string>(),
                               "input bodies file");
     description.add_options()(
@@ -106,7 +109,7 @@ int main(int argc, char *argv[]) {
     } else {
       config.input_file = boost::none;
     }
-    config.output_file = vm["output"].as<string>();
+    config.output_path = vm["output"].as<string>();
     config.min_log_level = vm["min-log-level"].as<logging::Level>();
   }
   mpi::broadcast(world, config, ROOT);
@@ -137,9 +140,22 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  boost::optional<std::ofstream> outfile = boost::none;
+  boost::optional<fs::path> output_path;
   if (world.rank() == ROOT) {
-    outfile = std::ofstream(config.output_file);
+    output_path = fs::path(config.output_path);
+    if (fs::exists(*output_path)) {
+      if (!fs::is_directory(*output_path)) {
+        logger(Level::Error) << "output path " << *output_path
+                             << " is not a directory" << std::endl;
+        world.abort(MPI_ERR_ARG);
+      }
+    }
+    fs::create_directories(config.output_path);
+
+    // dump configuration to output path
+    output::dump_configuration(*output_path, config);
+    output::output_time_information(*output_path, config);
+    output::output_sample_number(*output_path, config);
   }
 
   boost::optional<std::ifstream> infile = boost::none;
@@ -172,25 +188,48 @@ int main(int argc, char *argv[]) {
                 std::uniform_real_distribution<Number>(min, max)(random_engine);
             body.velocity[d] = 0;
           }
-          body.mass = 1;
+          body.mass =
+              std::uniform_real_distribution<Number>(0.5, 1)(random_engine);
           return body;
         };
     random::body::random_bodies(world, body_generator, bodies, *config.number);
   }
 
   if (world.rank() == ROOT) {
-    boost::archive::xml_oarchive(logging::logger(logging::Level::Info)
-                                     << "dump bodies\n",
-                                 boost::archive::no_header)
-        << BOOST_SERIALIZATION_NVP(bodies);
+    output::dump_bodies(*output_path, bodies);
   }
 
+  constexpr Number INF = std::numeric_limits<Number>::infinity();
+  data::Space<Number, DIMENSION> bounds{
+      .min =
+          {
+              INF,
+              INF,
+              INF,
+          },
+      .max =
+          {
+              -INF,
+              -INF,
+              -INF,
+          },
+      .center =
+          {
+              0,
+              0,
+              0,
+          },
+  };
+  std::size_t output_index = 0;
   if (world.rank() == ROOT) {
-    output::output_positions(*outfile, bodies);
-    logger(Level::Info) << "output initial state finished" << endl;
+    output::output_positions(*output_path, output_index, bodies);
+    logger(Level::Info) << "output initial step with index " << output_index
+                        << " finished" << endl;
+    ++output_index;
   }
   for (decltype(config.steps) s = 0; s < config.steps;) {
     auto root_space = space::root_space(world, bodies);
+    space::extend_to_contain(bounds, root_space);
     auto body_tree = data::tree::build_tree(world, root_space, bodies);
     physical::step(world, bodies, body_tree, config.time, config.G,
                    config.theta, config.soften_length);
@@ -199,10 +238,16 @@ int main(int argc, char *argv[]) {
 
     if (world.rank() == ROOT && s % config.sample_interval == 0) {
       // do sample
-      output::output_positions(*outfile, bodies);
-      logger(Level::Info) << "output step " << s << " finished" << endl;
+      output::output_positions(*output_path, output_index, bodies);
+      logger(Level::Info) << "output step " << s << " with index "
+                          << output_index << " finished" << endl;
+      ++output_index;
     }
   }
+  // save last bodies
+  output::dump_bodies_finished(*output_path, bodies);
+  space::extend_to_contain(bounds, space::root_space(world, bodies));
+  output::output_bounds(*output_path, bounds);
   return 0;
 }
 

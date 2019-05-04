@@ -34,6 +34,7 @@ target_include_directories(n-body-lib PRIVATE
         ${Boost_INCLUDE_DIRS}
         ${MPI_INCLUDE_PATH})
 target_link_libraries(n-body-lib PRIVATE
+        stdc++fs
         ${Boost_LIBRARIES}
         ${MPI_LIBRARIES})
 
@@ -45,6 +46,7 @@ target_include_directories(n-body PRIVATE
         ${MPI_INCLUDE_PATH})
 target_link_libraries(n-body PRIVATE
         n-body-lib
+        stdc++fs
         ${Boost_LIBRARIES}
         ${MPI_LIBRARIES})
 
