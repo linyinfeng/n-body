@@ -244,10 +244,13 @@ int main(int argc, char *argv[]) {
       ++output_index;
     }
   }
-  // save last bodies
-  output::dump_bodies_finished(*output_path, bodies);
   space::extend_to_contain(bounds, space::root_space(world, bodies));
-  output::output_bounds(*output_path, bounds);
+
+  if (world.rank() == ROOT) {
+    // save last bodies
+    output::dump_bodies_finished(*output_path, bodies);
+    output::output_bounds(*output_path, bounds);
+  }
   return 0;
 }
 
