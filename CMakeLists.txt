@@ -57,10 +57,12 @@ add_executable(n-body-test
         test/tree.cpp)
 
 target_include_directories(n-body-test PRIVATE src
-        ${Boost_INCLUDE_DIRS})
+        ${Boost_INCLUDE_DIRS}
+        ${MPI_INCLUDE_PATH})
 target_link_libraries(n-body-test PRIVATE
         n-body-lib
-        ${Boost_LIBRARIES})
+        ${Boost_LIBRARIES}
+        ${MPI_LIBRARIES})
 target_compile_definitions(n-body-test PRIVATE BOOST_TEST_DYN_LINK)
 
 add_test(test_all n-body-test)
