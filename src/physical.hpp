@@ -88,9 +88,11 @@ gravity_per_unit_mass(T G, T theta, T soften_length,
                       const data::Vector<T, Dimension> &position) {
 
   if (tree.node(root).node_type() == data::tree::NodeType::Inner) {
+    auto position_in_space = space::contains(tree.node(root).space, position);
+
     auto space_size = space::size_of_space(tree.node(root).space);
     auto distance = data::module_of(position - tree.node(root).center_of_mass);
-    if (distance != 0 && (space_size / distance) < theta) {
+    if (!position_in_space && (space_size / distance) < theta) {
       return gravity_per_unit_mass(G, soften_length,
                                    tree.node(root).center_of_mass,
                                    tree.node(root).mass, position);

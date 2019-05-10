@@ -89,6 +89,17 @@ data::Space<T, Dimension> subspace(const data::Space<T, Dimension> &space,
   return result;
 }
 
+template <typename T, std::size_t Dimension>
+bool contains(const data::Space<T, Dimension> &space,
+              data::Vector<T, Dimension> position) {
+  for (std::size_t d = 0; d < Dimension; ++d) {
+    if (position[d] < space.min[d] || position[d] > space.max[d]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // determine which part of the space does the position belong to
 // use binary to encode the part
 template <typename T, std::size_t Dimension>
