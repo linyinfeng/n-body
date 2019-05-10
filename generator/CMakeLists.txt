@@ -11,3 +11,6 @@ link_libraries(
 add_executable(tree-body
         three_body.cpp)
 
+add_executable(cube
+        cube.cpp)
+
