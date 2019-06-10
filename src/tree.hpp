@@ -224,6 +224,7 @@ template <typename T, std::size_t Dimension> struct BodyTree {
           }
         }
       } else {
+        // if current node type is leaf
         auto body = this->body_of_node(root);
         copy_tree_in_place(root, other, other_root);
         this->push(root, bodies, body);
