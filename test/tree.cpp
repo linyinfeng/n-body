@@ -233,6 +233,8 @@ void compare_subtree(const data::tree::BodyTree<T, Dimension> &tree1,
                      const data::tree::BodyTree<T, Dimension> &tree2,
                      std::size_t root2) {
   BOOST_TEST(tree1.node(root1).node_type() == tree2.node(root2).node_type());
+  BOOST_TEST(tree1.node(root1).mass == tree2.node(root2).mass);
+  // BOOST_TEST(tree1.node(root1).center_of_mass == tree2.node(root2).center_of_mass);
   if (tree1.node(root1).node_type() == data::tree::NodeType::Inner) {
     for (std::size_t i = 0;
          i < data::tree::BodyTreeInnerNode<T, Dimension>::CHILDREN_NUMBER;
