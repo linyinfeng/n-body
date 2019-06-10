@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
     description.add_options()("number,n", po::value<unsigned>(),
                               "number of bodies");
     description.add_options()("steps,s",
-                              po::value<unsigned>()->default_value(1000),
+                              po::value<unsigned>()->default_value(100),
                               "simulate steps");
     description.add_options()("sample-interval",
                               po::value<unsigned>()->default_value(10),
@@ -69,10 +69,10 @@ int main(int argc, char *argv[]) {
     description.add_options()("time,t", po::value<Number>()->default_value(1),
                               "time of every single step(s)");
     description.add_options()("gravitational-constant,G",
-                              po::value<Number>()->default_value(6.67408e-11),
+                              po::value<Number>()->default_value(1),
                               "the gravitational constant(m^3kg^-1s^-2)");
     description.add_options()("theta,p",
-                              po::value<Number>()->default_value(0.5),
+                              po::value<Number>()->default_value(1),
                               "Barnes-Hut approximation parameter");
     description.add_options()(
         "output,o", po::value<string>()->default_value("n-body-output"),
@@ -136,6 +136,11 @@ int main(int argc, char *argv[]) {
       logger(Level::Error) << "input file and number options should not be "
                               "specified simultaneously"
                            << std::endl;
+      world.abort(MPI_ERR_ARG);
+    }
+
+    if (!config.input_file && !config.number) {
+      logger(Level::Error) << "please spcify either body number or input file" << std::endl;
       world.abort(MPI_ERR_ARG);
     }
   }
@@ -231,8 +236,7 @@ int main(int argc, char *argv[]) {
     auto root_space = space::root_space(world, bodies);
     space::extend_to_contain(bounds, root_space);
     auto body_tree = data::tree::build_tree(world, root_space, bodies);
-    physical::step(world, bodies, body_tree, config.time, config.G,
-                   config.theta, config.soften_length);
+    physical::step(config, world, bodies, body_tree);
 
     ++s;
 
